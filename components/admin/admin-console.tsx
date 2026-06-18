@@ -1,8 +1,11 @@
 "use client"
 
 import { useState, type ReactNode } from "react"
-import { Activity, Check, Copy, Cpu, KeyRound, Layers3, RadioTower, Shield, Wallet } from "lucide-react"
+import { Activity, Check, Code2, Copy, Cpu, ExternalLink, Fingerprint, KeyRound, Layers3, RadioTower, Rocket, Server, Shield, Terminal, Wallet } from "lucide-react"
 import type { District, MoltbotAgent } from "@/lib/types"
+import { PassportPanel } from "@/components/admin/passport-panel"
+
+type AdminTab = "overview" | "passport" | "private-deploy"
 
 type Plan = {
   name: string
@@ -52,6 +55,7 @@ const monthlyUsed = 18420
 export function AdminConsole({ agents, districts }: AdminConsoleProps) {
   const [copied, setCopied] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<Plan>(plans[1])
+  const [tab, setTab] = useState<AdminTab>("overview")
 
   const activeAgents = agents.filter((agent) => agent.status === "active" || agent.status === "working")
   const totalTasks = agents.reduce((sum, agent) => sum + agent.tasksCompleted, 0)
@@ -162,6 +166,40 @@ export function AdminConsole({ agents, districts }: AdminConsoleProps) {
           </section>
         </header>
 
+        <nav className="flex flex-wrap gap-2">
+          <TabButton active={tab === "overview"} onClick={() => setTab("overview")} icon={<RadioTower className="h-3.5 w-3.5" />}>
+            Orchestration overview
+          </TabButton>
+          <TabButton active={tab === "passport"} onClick={() => setTab("passport")} icon={<Fingerprint className="h-3.5 w-3.5" />}>
+            Agent Passport (ZK)
+          </TabButton>
+          <TabButton active={tab === "private-deploy"} onClick={() => setTab("private-deploy")} icon={<Rocket className="h-3.5 w-3.5" />}>
+            Private Deploy
+          </TabButton>
+        </nav>
+
+        {tab === "passport" ? (
+          <section className="rounded-[28px] border border-cyan-500/20 bg-slate-950/60 p-5">
+            <div className="mb-5 max-w-3xl">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[10px] uppercase tracking-[0.32em] text-cyan-200">
+                <Fingerprint className="h-3.5 w-3.5" />
+                Zero-knowledge trust layer
+              </div>
+              <h2 className="font-pixel text-xl uppercase leading-tight text-cyan-100">
+                Prove an agent is solvent &amp; authorized — without doxxing the owner
+              </h2>
+              <p className="mt-3 font-vt323 text-xl leading-7 text-slate-300">
+                Each agent mints a ZK passport (Groth16 / Soroban) proving it is backed by a verified human and is
+                solvent for its spend cap. The x402 settlement rail then releases a payment only when the agent holds a
+                valid passport and the amount stays within its proven, hidden cap.
+              </p>
+            </div>
+            <PassportPanel />
+          </section>
+        ) : tab === "private-deploy" ? (
+          <PrivateDeployTab />
+        ) : (
+        <>
         <section className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr_0.8fr]">
           <Panel
             title="Infra posture"
@@ -302,8 +340,208 @@ export function AdminConsole({ agents, districts }: AdminConsoleProps) {
             />
           </Panel>
         </section>
+        </>
+        )}
       </div>
     </main>
+  )
+}
+
+const API_ENDPOINTS = [
+  { method: "GET",  path: "/api/protocol/x402/quote",        desc: "Create x402 payment quote" },
+  { method: "POST", path: "/api/protocol/x402/settle",       desc: "Settle x402 payment (optional passport gate)" },
+  { method: "POST", path: "/api/protocol/passport/authorize",desc: "ZK spend-cap authorization gate" },
+  { method: "GET",  path: "/api/protocol/passport/status",   desc: "On-chain agent passport lookup" },
+  { method: "GET",  path: "/api/protocol/reputation",        desc: "Agent reputation query" },
+  { method: "POST", path: "/api/protocol/reputation",        desc: "Record reputation action" },
+  { method: "GET",  path: "/api/protocol/track8004",         desc: "ERC-8004 agent identity resolution" },
+  { method: "GET",  path: "/api/stellar/balance",            desc: "Stellar account balance" },
+  { method: "POST", path: "/api/stellar/build-tx",           desc: "Build and sign Stellar transaction" },
+  { method: "POST", path: "/api/stellar/submit-tx",          desc: "Submit signed transaction" },
+  { method: "POST", path: "/api/stellar/fund",               desc: "Friendbot testnet funding" },
+] as const
+
+const ENV_VARS = [
+  { name: "NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID", example: "abc123…", desc: "WalletConnect Cloud project ID" },
+  { name: "NEXT_PUBLIC_APP_URL", example: "https://your-instance.vercel.app", desc: "Public URL of your deployment" },
+] as const
+
+function PrivateDeployTab() {
+  return (
+    <>
+      <section className="rounded-[28px] border border-amber-500/20 bg-slate-950/80 p-5 shadow-[0_24px_80px_rgba(2,8,23,0.45)] backdrop-blur">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-3xl">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-[10px] uppercase tracking-[0.32em] text-amber-200">
+              <Rocket className="h-3.5 w-3.5" />
+              Private deployment
+            </div>
+            <h2 className="font-pixel text-2xl uppercase leading-tight text-cyan-100">
+              Run your own Open Stellar node
+            </h2>
+            <p className="mt-4 max-w-2xl font-vt323 text-xl leading-7 text-slate-300">
+              Fork the repository, configure your Stellar and x402 credentials, and deploy to Vercel in under
+              five minutes. Your instance runs the same payment rails, agent passport ZK layer, and reputation
+              system as this one — fully isolated, fully yours.
+            </p>
+          </div>
+
+          <a
+            href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fleocagli%2FOpen-Stellar&project-name=open-stellar&repository-name=open-stellar"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex shrink-0 items-center gap-2 rounded-full border border-amber-400/40 bg-amber-400/10 px-5 py-3 text-xs uppercase tracking-[0.2em] text-amber-200 transition hover:border-amber-400/70 hover:bg-amber-400/20 hover:text-amber-100"
+          >
+            <Rocket className="h-3.5 w-3.5" />
+            Deploy to Vercel
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-[0.65fr_1.35fr]">
+        <section className="rounded-[28px] border border-slate-800 bg-slate-950/80 p-5 shadow-[0_24px_80px_rgba(2,8,23,0.45)] backdrop-blur">
+          <p className="text-[10px] uppercase tracking-[0.32em] text-slate-500">Setup guide</p>
+          <h3 className="mt-3 font-pixel text-lg uppercase text-slate-100">Quick start</h3>
+          <div className="mt-5 space-y-4">
+            <DeployStep n={1} title="Fork" text="Fork leocagli/Open-Stellar on GitHub. The repo includes all ZK artifacts and Soroban contract bindings — no extra setup." />
+            <DeployStep n={2} title="Configure" text="Add the environment variables below to your Vercel project settings. WalletConnect project ID is the only required external credential." />
+            <DeployStep n={3} title="Deploy" text="Push to main — Vercel picks it up automatically. The vercel.json enforces --webpack mode for snarkjs compatibility." />
+          </div>
+
+          <div className="mt-6 space-y-2">
+            <p className="text-[10px] uppercase tracking-[0.32em] text-slate-500">Environment variables</p>
+            {ENV_VARS.map((v) => (
+              <div key={v.name} className="rounded-[18px] border border-slate-800 bg-[#09101a] p-3">
+                <p className="font-mono text-xs text-amber-300">{v.name}</p>
+                <p className="mt-1 font-mono text-[11px] text-slate-500">e.g. {v.example}</p>
+                <p className="mt-1 font-vt323 text-base text-slate-400">{v.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6 flex flex-col gap-2">
+            <a
+              href="https://github.com/leocagli/Open-Stellar"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-xs uppercase tracking-[0.2em] text-slate-300 transition hover:border-cyan-400/40 hover:text-cyan-200"
+            >
+              <Code2 className="h-3.5 w-3.5" />
+              View source
+              <ExternalLink className="h-3 w-3" />
+            </a>
+            <a
+              href="https://github.com/leocagli/open-stellar-passport"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-xs uppercase tracking-[0.2em] text-slate-300 transition hover:border-cyan-400/40 hover:text-cyan-200"
+            >
+              <Shield className="h-3.5 w-3.5" />
+              ZK passport repo
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+        </section>
+
+        <section className="rounded-[28px] border border-slate-800 bg-slate-950/80 p-5 shadow-[0_24px_80px_rgba(2,8,23,0.45)] backdrop-blur">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.32em] text-slate-500">Developer API</p>
+              <h3 className="mt-3 font-pixel text-lg uppercase text-slate-100">Endpoints</h3>
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-slate-400">
+              <Server className="h-3.5 w-3.5" />
+              REST / JSON
+            </div>
+          </div>
+
+          <p className="font-vt323 text-lg leading-6 text-slate-400">
+            All endpoints are available on your private instance at{" "}
+            <span className="font-mono text-cyan-300">https://{"<your-domain>"}</span>. Authenticate with the
+            issued key shown on the overview panel. The x402 and passport endpoints run against Stellar testnet by
+            default; swap the contract addresses and RPC URL in <span className="font-mono text-slate-300">lib/passport/passport.ts</span> for mainnet.
+          </p>
+
+          <div className="mt-5 space-y-2">
+            {API_ENDPOINTS.map((ep) => (
+              <div
+                key={ep.path}
+                className="flex items-center gap-3 rounded-[18px] border border-slate-800 bg-[#09101a] px-4 py-3"
+              >
+                <span
+                  className={`shrink-0 rounded-md px-2 py-0.5 font-mono text-[10px] uppercase ${
+                    ep.method === "GET"
+                      ? "bg-emerald-400/10 text-emerald-300"
+                      : "bg-amber-400/10 text-amber-300"
+                  }`}
+                >
+                  {ep.method}
+                </span>
+                <span className="flex-1 font-mono text-xs text-slate-300">{ep.path}</span>
+                <span className="hidden font-vt323 text-base text-slate-500 xl:block">{ep.desc}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6 rounded-[22px] border border-slate-800 bg-[#09101a] p-4">
+            <div className="flex items-start gap-3">
+              <Terminal className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" />
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.28em] text-slate-500">Test your instance</p>
+                <pre className="mt-2 font-mono text-xs text-slate-300 leading-5">
+{`curl https://<your-domain>/api/protocol/x402/quote \\
+  -H "Authorization: Bearer <api-key>" \\
+  -H "Content-Type: application/json" \\
+  -d '{"amount":"0.1","asset":"XLM","recipient":"G..."}'`}
+                </pre>
+              </div>
+            </div>
+          </div>
+        </section>
+      </section>
+    </>
+  )
+}
+
+function DeployStep({ n, title, text }: { n: number; title: string; text: string }) {
+  return (
+    <div className="flex gap-4">
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-amber-400/30 bg-amber-400/10 font-mono text-xs text-amber-300">
+        {n}
+      </div>
+      <div>
+        <p className="font-pixel text-xs uppercase text-slate-200">{title}</p>
+        <p className="mt-1.5 font-vt323 text-lg leading-6 text-slate-400">{text}</p>
+      </div>
+    </div>
+  )
+}
+
+function TabButton({
+  active,
+  onClick,
+  icon,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  icon: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs uppercase tracking-[0.2em] transition ${
+        active
+          ? "border-cyan-400/50 bg-cyan-400/10 text-cyan-200"
+          : "border-slate-800 bg-slate-950/70 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+      }`}
+    >
+      {icon}
+      {children}
+    </button>
   )
 }
 

@@ -63,6 +63,10 @@ export interface X402SettlementResult {
   error?: string
 }
 
+export function peekX402Quote(paymentRef: string): X402Quote | undefined {
+  return quoteRegistry.get(paymentRef)
+}
+
 export function createX402Quote(input: X402QuoteRequest): X402Quote {
   const ttlSeconds = input.ttlSeconds ?? 300
   if (!Number.isFinite(ttlSeconds) || ttlSeconds <= 0) {
