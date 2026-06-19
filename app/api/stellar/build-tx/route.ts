@@ -10,6 +10,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing params" }, { status: 400 })
     }
 
+    const parsedAmount = parseFloat(amount)
+    if (!parsedAmount || parsedAmount <= 0 || parsedAmount > 900_000_000) {
+      return NextResponse.json({ error: "Invalid amount" }, { status: 400 })
+    }
+    const xlmAmount = parsedAmount.toFixed(7)
+
     const server = new StellarSdk.Horizon.Server(HORIZON)
     const sourceAccount = await server.loadAccount(sourcePublic)
 
@@ -21,7 +27,7 @@ export async function POST(req: Request) {
         StellarSdk.Operation.payment({
           destination,
           asset: StellarSdk.Asset.native(),
-          amount: String(amount),
+          amount: xlmAmount,
         })
       )
       .setTimeout(30)

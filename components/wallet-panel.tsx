@@ -99,6 +99,20 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
     return () => { cancelled = true }
   }, [])
 
+  // Poll every 3s until Freighter is detected (handles installing extension after page load)
+  useEffect(() => {
+    if (freighterAvailable !== false) return
+    const id = setInterval(async () => {
+      const freighter = await getFreighter()
+      if (!freighter) return
+      try {
+        const result = await freighter.isConnected()
+        if (result) setFreighterAvailable(true)
+      } catch { }
+    }, 3000)
+    return () => clearInterval(id)
+  }, [freighterAvailable])
+
   const handleConnect = useCallback(async () => {
     setLoading("connect")
     setError(null)
@@ -172,6 +186,7 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
   const handleRefresh = useCallback(async (agent: MoltbotAgent) => {
     if (!agent.wallet) return
     setLoading("refresh")
+    setError(null)
     try {
       const res = await fetch("/api/stellar/balance", {
         method: "POST",
@@ -179,14 +194,32 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
         body: JSON.stringify({ publicKey: agent.wallet.publicKey }),
       })
       const data = await res.json()
-      const bal = data.balance || "0"
-      onUpdateAgent(agent.id, { ...agent.wallet, balance: bal, funded: parseFloat(bal) > 0 })
-    } catch { /* silent */ }
+      if (data.error === "network") {
+        setError("Balance fetch failed — Stellar testnet may be unreachable")
+      } else {
+        const bal = data.balance || "0"
+        onUpdateAgent(agent.id, { ...agent.wallet, balance: bal, funded: parseFloat(bal) > 0 })
+      }
+    } catch {
+      setError("Balance refresh failed")
+    }
     setLoading(null)
   }, [onUpdateAgent])
 
   const handleSend = useCallback(async (agent: MoltbotAgent) => {
     if (!agent.wallet || !sendTo || !sendAmount) return
+
+    const amountNum = parseFloat(sendAmount)
+    if (!amountNum || amountNum <= 0) {
+      setError("Amount must be greater than 0")
+      return
+    }
+    const currentBalance = parseFloat(agent.wallet.balance)
+    if (amountNum >= currentBalance - 1) {
+      setError(`Max sendable: ${Math.max(0, currentBalance - 1).toFixed(2)} XLM (1 XLM reserve required)`)
+      return
+    }
+
     const recipient = agents.find(a => a.id === sendTo)
     if (!recipient?.wallet?.funded) {
       setError("Recipient has no funded wallet")
@@ -202,7 +235,7 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
         body: JSON.stringify({
           sourcePublic: agent.wallet.publicKey,
           destination: recipient.wallet.publicKey,
-          amount: sendAmount,
+          amount: amountNum.toFixed(7),
         }),
       })
       const buildData = await buildRes.json()
@@ -627,9 +660,9 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
                     type="number"
                     value={sendAmount}
                     onChange={e => setSendAmount(e.target.value)}
-                    min="1"
-                    step="1"
-                    placeholder="Amount"
+                    min="0.0000001"
+                    step="0.01"
+                    placeholder="Amount XLM"
                     style={{
                       flex: 1,
                       background: "#111827",

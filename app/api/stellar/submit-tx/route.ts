@@ -14,7 +14,11 @@ export async function POST(req: Request) {
       StellarSdk.Networks.TESTNET
     )
     const result = await server.submitTransaction(transaction)
-    return NextResponse.json({ success: true, hash: (result as { hash?: string }).hash || "unknown" })
+    const hash = (result as { hash?: string }).hash
+    if (!hash) {
+      return NextResponse.json({ error: "Transaction submitted but no hash returned" }, { status: 502 })
+    }
+    return NextResponse.json({ success: true, hash })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
