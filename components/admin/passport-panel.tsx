@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, type ReactNode } from "react"
+import * as TooltipPrimitive from "@radix-ui/react-tooltip"
 import {
   Activity,
   Coins,
@@ -188,11 +189,43 @@ export function PassportPanel() {
 
   const committed = commitResult?.ok === true
 
+  const PASSPORT_STEPS = ["Mint", "Simulate", "Register", "Pay", "Replay"]
+  const reachedIdx = replay ? 4 : payRes ? 3 : committed ? 2 : verifyRes?.ok ? 1 : minted ? 0 : -1
+
   return (
+    <TooltipPrimitive.Provider delayDuration={200}>
     <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
       {/* LEFT — the 4-step flow */}
       <div className="space-y-4">
-        <Step n="01" title="Mint passport" subtitle="Client-side Groth16 proof — keys never leave the browser">
+        {/* Step progress indicator */}
+        <div className="flex items-center gap-1 px-1 pb-1">
+          {PASSPORT_STEPS.map((label, i) => (
+            <div key={label} className="flex flex-1 flex-col items-center gap-1">
+              <div className="flex w-full items-center">
+                {i > 0 && (
+                  <div className={`h-px flex-1 transition-colors ${i <= reachedIdx + 1 ? "bg-cyan-500/60" : "bg-slate-800"}`} />
+                )}
+                <div
+                  className={`h-2.5 w-2.5 rounded-full border transition-all ${
+                    i <= reachedIdx
+                      ? "border-cyan-400 bg-cyan-400"
+                      : i === reachedIdx + 1
+                      ? "border-cyan-400/60 bg-transparent"
+                      : "border-slate-700 bg-transparent"
+                  }`}
+                />
+                {i < PASSPORT_STEPS.length - 1 && (
+                  <div className={`h-px flex-1 transition-colors ${i < reachedIdx ? "bg-cyan-500/60" : "bg-slate-800"}`} />
+                )}
+              </div>
+              <span className={`text-[9px] uppercase tracking-[0.18em] ${i <= reachedIdx ? "text-cyan-400" : i === reachedIdx + 1 ? "text-slate-400" : "text-slate-700"}`}>
+                {label}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <Step n="01" title="Mint passport" subtitle={<>Client-side <ZKTerm term="Groth16" tip="Zero-knowledge proof system. Groth16 generates a 192-byte proof off-chain that is verifiable in milliseconds on-chain." /> proof — keys never leave the browser</>}>
           <div className="flex flex-wrap items-end gap-4">
             <label className="flex-1 min-w-[180px]">
               <span className="text-[10px] uppercase tracking-[0.28em] text-slate-500">Spend cap (XLM)</span>
@@ -227,7 +260,7 @@ export function PassportPanel() {
           )}
         </Step>
 
-        <Step n="02" title="Simulate on-chain verification" subtitle="BN254 pairing checked by the Soroban validator — read-only, no gas">
+        <Step n="02" title="Simulate on-chain verification" subtitle={<><ZKTerm term="BN254" tip="Barreto-Naehrig elliptic curve. BN254 enables efficient pairing operations used to verify Groth16 proofs in under 1ms on-chain." /> pairing checked by the <ZKTerm term="Soroban" tip="Stellar's smart contract platform. Soroban runs WebAssembly contracts with deterministic execution and Rust-friendly tooling." /> validator — read-only, no gas</>}>
           <button
             type="button"
             onClick={doVerify}
@@ -259,7 +292,7 @@ export function PassportPanel() {
 
         {/* Step 02b — only visible after simulation passes */}
         {verifyRes?.ok && (
-          <Step n="02b" title="Register on-chain" subtitle="Sign with Freighter to persist the passport on Soroban (costs gas)">
+          <Step n="02b" title="Register on-chain" subtitle={<>Sign with Freighter to persist the passport on <ZKTerm term="Soroban" tip="Stellar's smart contract platform. Writing to it requires signing a transaction with your wallet." /> (costs gas)</>}>
             <div className="flex flex-wrap items-center gap-4">
               {freighterKey ? (
                 <span className="font-mono text-[11px] text-slate-400">
@@ -361,6 +394,7 @@ export function PassportPanel() {
       <div className="space-y-4">
         <PassportCardMini cap={minted?.spendCap ?? toStroops(cap)} minted={minted} verified={!!verifyRes?.ok} committed={committed} />
 
+
         <div className="rounded-[28px] border border-slate-800 bg-slate-950/80 p-5">
           <p className="text-[10px] uppercase tracking-[0.32em] text-slate-500">Live console</p>
           <div className="mt-3 h-56 overflow-auto rounded-2xl border border-slate-800 bg-black/50 p-3 font-mono text-[11px] leading-relaxed text-slate-300">
@@ -383,6 +417,28 @@ export function PassportPanel() {
         </div>
       </div>
     </div>
+    </TooltipPrimitive.Provider>
+  )
+}
+
+function ZKTerm({ term, tip }: { term: string; tip: string }) {
+  return (
+    <TooltipPrimitive.Root>
+      <TooltipPrimitive.Trigger asChild>
+        <span className="cursor-help border-b border-dotted border-slate-500 transition-colors hover:border-cyan-400 hover:text-cyan-300">
+          {term}
+        </span>
+      </TooltipPrimitive.Trigger>
+      <TooltipPrimitive.Portal>
+        <TooltipPrimitive.Content
+          className="z-50 max-w-[260px] rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 font-mono text-[11px] leading-relaxed text-slate-300 shadow-xl"
+          sideOffset={6}
+        >
+          {tip}
+          <TooltipPrimitive.Arrow className="fill-slate-700" />
+        </TooltipPrimitive.Content>
+      </TooltipPrimitive.Portal>
+    </TooltipPrimitive.Root>
   )
 }
 
@@ -394,7 +450,7 @@ function Step({
 }: {
   n: string
   title: string
-  subtitle: string
+  subtitle: ReactNode
   children: ReactNode
 }) {
   return (

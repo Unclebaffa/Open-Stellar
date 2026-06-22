@@ -238,11 +238,11 @@ export function WalletButton() {
                 borderBottom: '2px solid #2d221a'
               }}
             >
-              <span 
+              <span
                 className="text-xs font-bold uppercase tracking-wider"
                 style={{ fontFamily: 'var(--font-vt323)', color: '#ffd700' }}
               >
-                Conectar Wallet
+                Connect Wallet
               </span>
             </div>
 
@@ -285,7 +285,7 @@ export function WalletButton() {
                         className="text-xs"
                         style={{ fontFamily: 'var(--font-vt323)', color: '#8b2942' }}
                       >
-                        Red incorrecta: usa BNB Testnet
+                        Wrong network: switch to BNB Testnet
                       </div>
                       <PixelButton
                         onClick={handleSwitchBnbTestnet}
@@ -293,7 +293,7 @@ export function WalletButton() {
                         variant="bnb"
                         fullWidth
                       >
-                        {isSwitchingBnb ? 'Cambiando...' : 'Cambiar a Testnet'}
+                        {isSwitchingBnb ? 'Switching...' : 'Switch to Testnet'}
                       </PixelButton>
                     </>
                   )}
@@ -307,10 +307,10 @@ export function WalletButton() {
                     fullWidth
                   >
                     {isConnecting === 'bnb' || isConnectingBnb
-                      ? 'Conectando...'
+                      ? 'Connecting...'
                       : metaMaskConnector
                       ? 'MetaMask'
-                      : 'MetaMask no disponible'}
+                      : 'MetaMask not available'}
                   </PixelButton>
 
                   <PixelButton
@@ -321,7 +321,7 @@ export function WalletButton() {
                   >
                     {walletConnectConnector
                       ? 'WalletConnect'
-                      : 'WalletConnect desactivado'}
+                      : 'WalletConnect disabled'}
                   </PixelButton>
                 </div>
               )}
@@ -365,7 +365,7 @@ export function WalletButton() {
                       className="text-xs"
                       style={{ fontFamily: 'var(--font-vt323)', color: '#8b2942' }}
                     >
-                      Cambia Freighter a Stellar Testnet
+                      Switch Freighter to Stellar Testnet
                     </div>
                   )}
                 </div>
@@ -377,12 +377,12 @@ export function WalletButton() {
                   fullWidth
                 >
                   {!freighterAvailable 
-                    ? 'Instalar / Reintentar' 
-                    : isConnecting === 'stellar' 
-                    ? 'Conectando...' 
+                    ? 'Install / Retry'
+                    : isConnecting === 'stellar'
+                    ? 'Connecting...'
                     : stellarManuallyDisconnected
-                    ? 'Reconectar Freighter'
-                    : 'Conectar Freighter'}
+                    ? 'Reconnect Freighter'
+                    : 'Connect Freighter'}
                 </PixelButton>
               )}
               
@@ -398,7 +398,7 @@ export function WalletButton() {
                     textDecoration: 'underline'
                   }}
                 >
-                  Descargar Extension
+                  Download Extension
                 </a>
               )}
             </div>

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { toast } from "sonner"
 import type { MoltbotAgent, WalletTransaction } from "@/lib/types"
 
 interface X402QuoteView {
@@ -23,7 +24,6 @@ function truncAddr(addr: string) {
   return addr.slice(0, 6) + "..." + addr.slice(-6)
 }
 
-// Freighter API is loaded dynamically to avoid SSR issues
 async function getFreighter() {
   try {
     const mod = await import("@stellar/freighter-api")
@@ -58,6 +58,38 @@ function WalletBtn({ label, onClick, disabled, color }: { label: string; onClick
   )
 }
 
+function CopyBtn({ text, label }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch { }
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      title={`Copy ${label ?? "address"}`}
+      style={{
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        padding: "2px 4px",
+        color: copied ? "#34d399" : "#475569",
+        fontFamily: "monospace",
+        fontSize: 9,
+        transition: "color 0.15s",
+        flexShrink: 0,
+      }}
+    >
+      {copied ? "✓" : "⎘"}
+    </button>
+  )
+}
+
 export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent, onAddTransaction }: WalletPanelProps) {
   const [freighterAvailable, setFreighterAvailable] = useState<boolean | null>(null)
   const [connectedKey, setConnectedKey] = useState<string | null>(null)
@@ -68,6 +100,9 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
   const [track8004Mode, setTrack8004Mode] = useState<"native-8004" | "reputation-fallback" | null>(null)
   const [reputationScore, setReputationScore] = useState<number | null>(null)
   const [x402Quote, setX402Quote] = useState<X402QuoteView | null>(null)
+  const [x402Countdown, setX402Countdown] = useState<number | null>(null)
+  const [penaltyConfirm, setPenaltyConfirm] = useState(false)
+  const [assignConfirm, setAssignConfirm] = useState(false)
 
   // Check Freighter availability on mount
   useEffect(() => {
@@ -88,7 +123,7 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
               setConnectedKey(publicKey)
             }
           } catch {
-            // Not yet authorized -- that's ok
+            // Not yet authorized
           }
         }
       } catch {
@@ -99,7 +134,7 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
     return () => { cancelled = true }
   }, [])
 
-  // Poll every 3s until Freighter is detected (handles installing extension after page load)
+  // Poll every 3s until Freighter is detected
   useEffect(() => {
     if (freighterAvailable !== false) return
     const id = setInterval(async () => {
@@ -112,6 +147,25 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
     }, 3000)
     return () => clearInterval(id)
   }, [freighterAvailable])
+
+  // x402 live countdown
+  useEffect(() => {
+    if (!x402Quote) {
+      setX402Countdown(null)
+      return
+    }
+    const update = () => {
+      const remaining = Math.max(0, Math.floor((new Date(x402Quote.expiresAt).getTime() - Date.now()) / 1000))
+      setX402Countdown(remaining)
+      if (remaining === 0) {
+        setX402Quote(null)
+        toast("x402 quote expired — generate a new one", { icon: "⏱" })
+      }
+    }
+    update()
+    const id = setInterval(update, 1000)
+    return () => clearInterval(id)
+  }, [x402Quote])
 
   const handleConnect = useCallback(async () => {
     setLoading("connect")
@@ -133,17 +187,16 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
     setLoading(null)
   }, [])
 
-  // Assign the connected Freighter key to the selected agent
   const handleAssignWallet = useCallback(async (agent: MoltbotAgent) => {
     if (!connectedKey) return
     setLoading("assign")
     setError(null)
+    setAssignConfirm(false)
     onUpdateAgent(agent.id, {
       publicKey: connectedKey,
       balance: "0",
       funded: false,
     })
-    // Try to fetch existing balance
     try {
       const res = await fetch("/api/stellar/balance", {
         method: "POST",
@@ -161,6 +214,7 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
     } catch {
       // Ignore -- new account may not exist yet
     }
+    toast.success(`Wallet assigned to ${agent.name}`)
     setLoading(null)
   }, [connectedKey, onUpdateAgent])
 
@@ -177,8 +231,11 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
       const data = await res.json()
       if (data.error) throw new Error(data.error)
       onUpdateAgent(agent.id, { ...agent.wallet, balance: data.balance || "10000", funded: true })
+      toast.success(`${agent.name} funded with 10,000 XLM via Friendbot`)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Friendbot funding failed")
+      const msg = e instanceof Error ? e.message : "Friendbot funding failed"
+      setError(msg)
+      toast.error("Funding failed", { description: msg })
     }
     setLoading(null)
   }, [onUpdateAgent])
@@ -228,7 +285,6 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
     setLoading("send")
     setError(null)
     try {
-      // Step 1: Build the unsigned transaction on the server
       const buildRes = await fetch("/api/stellar/build-tx", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -241,7 +297,6 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
       const buildData = await buildRes.json()
       if (buildData.error) throw new Error(buildData.error)
 
-      // Step 2: Sign with Freighter
       const freighter = await getFreighter()
       if (!freighter) throw new Error("Freighter not available")
 
@@ -249,7 +304,6 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
         networkPassphrase: "Test SDF Network ; September 2015",
       })
 
-      // signResult can be { signedTxXdr: string } or a raw string
       const signedXdr =
         typeof signResult === "string"
           ? signResult
@@ -257,11 +311,8 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
           ? (signResult.signedTxXdr as string)
           : null
 
-      if (!signedXdr) {
-        throw new Error("Freighter did not return signed XDR")
-      }
+      if (!signedXdr) throw new Error("Freighter did not return signed XDR")
 
-      // Step 3: Submit signed transaction on the server
       const submitRes = await fetch("/api/stellar/submit-tx", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -270,7 +321,6 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
       const submitData = await submitRes.json()
       if (submitData.error) throw new Error(submitData.error)
 
-      // Step 4: Refresh balances
       const [fromBal, toBal] = await Promise.all([
         fetch("/api/stellar/balance", {
           method: "POST",
@@ -287,18 +337,26 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
       onUpdateAgent(agent.id, { ...agent.wallet, balance: fromBal.balance || "0" })
       onUpdateAgent(recipient.id, { ...recipient.wallet, balance: toBal.balance || "0" })
 
+      const txId = Date.now()
       onAddTransaction({
-        id: Date.now(),
+        id: txId,
         fromName: agent.name,
         toName: recipient.name,
         amount: sendAmount,
         timestamp: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
         hash: submitData.hash || "unknown",
       })
+
+      toast.success(`Sent ${sendAmount} XLM to ${recipient.name}`, {
+        description: submitData.hash ? `tx: ${submitData.hash.slice(0, 18)}…` : undefined,
+      })
+
       setSendAmount("10")
       setSendTo("")
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Transaction failed")
+      const msg = e instanceof Error ? e.message : "Transaction failed"
+      setError(msg)
+      toast.error("Transaction failed", { description: msg })
     }
     setLoading(null)
   }, [agents, sendTo, sendAmount, onUpdateAgent, onAddTransaction])
@@ -330,9 +388,7 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
     }
 
     syncProtocolState()
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [selectedAgent])
 
   const applyReputation = useCallback(async (agentId: string, delta: number, reason: string) => {
@@ -364,9 +420,7 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
       })
 
       const data = await res.json()
-      if (!res.ok || !data?.quote) {
-        throw new Error(data?.error || "x402 quote failed")
-      }
+      if (!res.ok || !data?.quote) throw new Error(data?.error || "x402 quote failed")
 
       setX402Quote({
         paymentRef: data.quote.paymentRef,
@@ -374,8 +428,11 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
         expiresAt: String(data.quote.expiresAt || ""),
         chain: data.quote.chain === "bnb" ? "bnb" : "stellar",
       })
+      toast("x402 quote created — 5 min to settle", { icon: "📋" })
     } catch (e) {
-      setError(e instanceof Error ? e.message : "x402 quote failed")
+      const msg = e instanceof Error ? e.message : "x402 quote failed"
+      setError(msg)
+      toast.error("Quote failed", { description: msg })
     }
     setLoading(null)
   }, [])
@@ -397,21 +454,21 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
         }),
       })
       const settleData = await settleRes.json()
-      if (!settleRes.ok) {
-        throw new Error(settleData?.error || "x402 settlement failed")
-      }
+      if (!settleRes.ok) throw new Error(settleData?.error || "x402 settlement failed")
 
       await applyReputation(agent.id, 15, "successful-x402-settlement")
       setX402Quote(null)
+      toast.success("x402 settled — +15 reputation", { description: `${x402Quote.amountUsd.toFixed(3)} USD on ${x402Quote.chain}` })
     } catch (e) {
-      setError(e instanceof Error ? e.message : "x402 settlement failed")
+      const msg = e instanceof Error ? e.message : "x402 settlement failed"
+      setError(msg)
+      toast.error("Settlement failed", { description: msg })
     }
     setLoading(null)
   }, [applyReputation, x402Quote])
 
   // -- Render --
 
-  // Freighter status banner
   const renderFreighterStatus = () => {
     if (freighterAvailable === null) {
       return (
@@ -482,7 +539,7 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
   const statusBanner = renderFreighterStatus()
   if (statusBanner) return statusBanner
 
-  // Connected state -- show wallet address bar
+  // No agent selected — show overview
   if (!selectedAgent) {
     return (
       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10, height: "100%" }}>
@@ -491,19 +548,24 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
           <div style={{ fontFamily: "monospace", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: 1 }}>
             Freighter Connected
           </div>
-          <div style={{ fontFamily: "monospace", fontSize: 11, color: "#22d3ee", marginTop: 4, wordBreak: "break-all" }}>
-            {truncAddr(connectedKey!)}
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}>
+            <div style={{ fontFamily: "monospace", fontSize: 11, color: "#22d3ee", wordBreak: "break-all", flex: 1 }}>
+              {truncAddr(connectedKey!)}
+            </div>
+            <CopyBtn text={connectedKey!} label="address" />
           </div>
-          <div style={{
-            marginTop: 6,
-            width: 8, height: 8, borderRadius: "50%", background: "#34d399",
-            display: "inline-block",
-          }} />
-          <span style={{ fontFamily: "monospace", fontSize: 9, color: "#34d399", marginLeft: 6 }}>Online</span>
+          <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#34d399" }} />
+            <span style={{ fontFamily: "monospace", fontSize: 9, color: "#34d399" }}>Online</span>
+          </div>
         </div>
 
-        <div style={{ fontFamily: "monospace", fontSize: 11, color: "#64748b", textAlign: "center", padding: 12 }}>
-          Select a bot on the map to assign and manage its wallet
+        {/* Empty state */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16, gap: 8, opacity: 0.6 }}>
+          <div style={{ fontSize: 24, opacity: 0.4 }}>←</div>
+          <span style={{ fontFamily: "monospace", fontSize: 11, color: "#64748b", textAlign: "center", lineHeight: 1.5 }}>
+            Click an agent on the map to assign and manage its Stellar wallet
+          </span>
         </div>
 
         {/* All wallets overview */}
@@ -552,6 +614,12 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
   const wallet = selectedAgent.wallet
   const otherFunded = agents.filter(a => a.id !== selectedAgent.id && a.wallet?.funded)
 
+  const fmtCountdown = (s: number) => {
+    const m = Math.floor(s / 60).toString().padStart(2, "0")
+    const sec = (s % 60).toString().padStart(2, "0")
+    return `${m}:${sec}`
+  }
+
   return (
     <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10, overflowY: "auto", height: "100%" }}>
       {/* Connected Freighter bar */}
@@ -560,6 +628,7 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
         <span style={{ fontFamily: "monospace", fontSize: 9, color: "#94a3b8", flex: 1 }}>
           {truncAddr(connectedKey!)}
         </span>
+        <CopyBtn text={connectedKey!} label="address" />
         <span style={{ fontFamily: "monospace", fontSize: 9, color: "#334155", background: "#1e293b", padding: "1px 5px", borderRadius: 3 }}>
           TESTNET
         </span>
@@ -574,20 +643,44 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
       </div>
 
       {!wallet ? (
-        /* No wallet assigned -- offer to assign */
+        /* No wallet assigned */
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: 16 }}>
           <div style={{ fontFamily: "monospace", fontSize: 11, color: "#64748b", textAlign: "center" }}>
             No wallet assigned to this bot.
           </div>
-          <WalletBtn
-            label={loading === "assign" ? "Assigning..." : "Assign Freighter Wallet"}
-            onClick={() => handleAssignWallet(selectedAgent)}
-            disabled={loading !== null}
-            color={selectedAgent.color}
-          />
-          <div style={{ fontFamily: "monospace", fontSize: 9, color: "#334155", textAlign: "center" }}>
-            Links your connected Freighter account to this bot
-          </div>
+          {!assignConfirm ? (
+            <>
+              <WalletBtn
+                label="Assign Freighter Wallet"
+                onClick={() => setAssignConfirm(true)}
+                disabled={loading !== null}
+                color={selectedAgent.color}
+              />
+              <div style={{ fontFamily: "monospace", fontSize: 9, color: "#334155", textAlign: "center" }}>
+                Links your connected Freighter account to this bot
+              </div>
+            </>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, width: "100%" }}>
+              <div style={{ fontFamily: "monospace", fontSize: 10, color: "#fbbf24", textAlign: "center" }}>
+                Assign {truncAddr(connectedKey!)} to {selectedAgent.name}?
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, width: "100%" }}>
+                <WalletBtn
+                  label={loading === "assign" ? "Assigning..." : "Confirm"}
+                  onClick={() => handleAssignWallet(selectedAgent)}
+                  disabled={loading !== null}
+                  color="#34d399"
+                />
+                <WalletBtn
+                  label="Cancel"
+                  onClick={() => setAssignConfirm(false)}
+                  disabled={loading !== null}
+                  color="#64748b"
+                />
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <>
@@ -596,8 +689,11 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
             <div style={{ fontFamily: "monospace", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: 1 }}>
               Public Key
             </div>
-            <div style={{ fontFamily: "monospace", fontSize: 11, color: "#94a3b8", marginTop: 2, wordBreak: "break-all" }}>
-              {truncAddr(wallet.publicKey)}
+            <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
+              <div style={{ fontFamily: "monospace", fontSize: 11, color: "#94a3b8", wordBreak: "break-all", flex: 1 }}>
+                {truncAddr(wallet.publicKey)}
+              </div>
+              <CopyBtn text={wallet.publicKey} label="public key" />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
               <div>
@@ -629,7 +725,7 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
             />
           )}
 
-          {/* Send payment (Freighter signed) */}
+          {/* Send payment */}
           {wallet.funded && (
             <div style={{ background: "#0f172a", borderRadius: 6, padding: 10, border: "1px solid #1e293b" }}>
               <div style={{ fontFamily: "monospace", fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>
@@ -686,7 +782,7 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
             </div>
           )}
 
-          {/* Protocol controls: x402 + 8004 fallback reputation */}
+          {/* Protocol Layer */}
           <div style={{ background: "#0f172a", borderRadius: 6, padding: 10, border: "1px solid #1e293b", display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ fontFamily: "monospace", fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: 1 }}>
               Protocol Layer
@@ -719,27 +815,67 @@ export function WalletPanel({ agents, selectedAgent, transactions, onUpdateAgent
               />
             </div>
 
-            {x402Quote && (
-              <div style={{ fontFamily: "monospace", fontSize: 9, color: "#94a3b8", lineHeight: 1.4 }}>
-                ref: {truncAddr(x402Quote.paymentRef)} | usd: {x402Quote.amountUsd.toFixed(3)} | exp: {new Date(x402Quote.expiresAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}
+            {x402Quote && x402Countdown !== null && (
+              <div style={{
+                fontFamily: "monospace",
+                fontSize: 9,
+                color: x402Countdown < 60 ? "#f87171" : "#94a3b8",
+                lineHeight: 1.5,
+                padding: "4px 6px",
+                background: "#111827",
+                borderRadius: 3,
+                border: `1px solid ${x402Countdown < 60 ? "#f8717122" : "#1e293b"}`,
+              }}>
+                <div>ref: {truncAddr(x402Quote.paymentRef)}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
+                  <span>usd: {x402Quote.amountUsd.toFixed(3)}</span>
+                  <span style={{ color: x402Countdown < 60 ? "#f87171" : "#64748b" }}>
+                    expires: {fmtCountdown(x402Countdown)}
+                  </span>
+                </div>
               </div>
             )}
 
-            <WalletBtn
-              label="Penalty -10"
-              onClick={async () => {
-                setLoading("rep-penalty")
-                setError(null)
-                try {
-                  await applyReputation(selectedAgent.id, -10, "manual-penalty")
-                } catch (e) {
-                  setError(e instanceof Error ? e.message : "reputation penalty failed")
-                }
-                setLoading(null)
-              }}
-              disabled={loading !== null}
-              color="#f87171"
-            />
+            {/* Penalty with confirmation */}
+            {!penaltyConfirm ? (
+              <WalletBtn
+                label="Penalty -10"
+                onClick={() => setPenaltyConfirm(true)}
+                disabled={loading !== null}
+                color="#f87171"
+              />
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ fontFamily: "monospace", fontSize: 9, color: "#fbbf24", textAlign: "center" }}>
+                  Apply -10 rep to {selectedAgent.name}?
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                  <WalletBtn
+                    label={loading === "rep-penalty" ? "..." : "Confirm"}
+                    onClick={async () => {
+                      setLoading("rep-penalty")
+                      setError(null)
+                      setPenaltyConfirm(false)
+                      try {
+                        await applyReputation(selectedAgent.id, -10, "manual-penalty")
+                        toast("Penalty applied: -10 reputation", { icon: "⚠️" })
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : "reputation penalty failed")
+                      }
+                      setLoading(null)
+                    }}
+                    disabled={loading !== null}
+                    color="#f87171"
+                  />
+                  <WalletBtn
+                    label="Cancel"
+                    onClick={() => setPenaltyConfirm(false)}
+                    disabled={loading !== null}
+                    color="#64748b"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}

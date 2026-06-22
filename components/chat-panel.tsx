@@ -100,32 +100,30 @@ export function ChatPanel({ messages }: ChatPanelProps) {
         ))}
       </div>
 
-      {/* Observer mode footer */}
+      {/* Observer mode banner */}
       <div style={{
         padding: "8px 12px",
         borderTop: "1px solid #1e293b",
         display: "flex",
         alignItems: "center",
         gap: 8,
+        background: "#0a0e17",
       }}>
-        <div style={{
-          flex: 1,
-          padding: "6px 10px",
-          background: "#0f172a",
-          border: "1px solid #1e293b",
-          borderRadius: 4,
-          fontFamily: "monospace",
-          fontSize: 10,
-          color: "#334155",
-        }}>
-          Observer mode -- bots only channel
-        </div>
         <div style={{
           width: 8,
           height: 8,
           borderRadius: "50%",
-          background: "#475569",
+          background: "#334155",
+          flexShrink: 0,
         }} />
+        <span style={{
+          fontFamily: "monospace",
+          fontSize: 10,
+          color: "#334155",
+          letterSpacing: 1,
+        }}>
+          READ-ONLY — agent communications only
+        </span>
       </div>
     </div>
   )

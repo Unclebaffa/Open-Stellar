@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import type { MoltbotAgent, LogEntry, ChatMessage, WalletTransaction } from "@/lib/types"
 import { DISTRICTS } from "@/lib/data"
 import { ChatPanel } from "./chat-panel"
@@ -89,6 +89,8 @@ function OverviewTab({ agents, selectedAgent, logs, onSelectAgent }: {
   logs: LogEntry[]
   onSelectAgent: (id: string | null) => void
 }) {
+  const [logExpanded, setLogExpanded] = useState(false)
+
   const active = agents.filter(a => a.status === "active" || a.status === "working").length
   const working = agents.filter(a => a.status === "working").length
   const errors = agents.filter(a => a.status === "error").length
@@ -178,12 +180,37 @@ function OverviewTab({ agents, selectedAgent, logs, onSelectAgent }: {
         </div>
       </div>
 
-      {/* Activity log */}
-      <div style={{ height: 140, borderTop: "1px solid #2a3a52", overflow: "auto", padding: 8 }}>
-        <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>
-          Activity Log
+      {/* Activity log — expandable */}
+      <div style={{
+        height: logExpanded ? 280 : 140,
+        borderTop: "1px solid #2a3a52",
+        overflow: "auto",
+        padding: 8,
+        transition: "height 0.2s ease",
+        flexShrink: 0,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 1 }}>
+            Activity Log
+          </div>
+          <button
+            onClick={() => setLogExpanded(e => !e)}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#475569",
+              cursor: "pointer",
+              fontSize: 10,
+              fontFamily: "monospace",
+              padding: "2px 4px",
+              transition: "color 0.15s",
+            }}
+            title={logExpanded ? "Collapse log" : "Expand log"}
+          >
+            {logExpanded ? "▼" : "▲"}
+          </button>
         </div>
-        {logs.slice(-20).reverse().map(log => (
+        {logs.slice(-40).reverse().map(log => (
           <div key={log.id} style={{ fontSize: 10, marginBottom: 3, display: "flex", gap: 6, lineHeight: 1.4 }}>
             <span style={{ color: "#475569", flexShrink: 0, fontFamily: "monospace" }}>{log.time}</span>
             <span style={{ color: logTypeColors[log.type] || "#94a3b8" }}>
@@ -206,9 +233,20 @@ export function SidebarPanel({
   onUpdateAgent,
   onAddTransaction,
 }: SidebarPanelProps) {
-  const [activeTab, setActiveTab] = useState<TabId>("overview")
+  const [activeTab, setActiveTab] = useState<TabId>(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("sidebar-tab") as TabId) || "overview"
+    }
+    return "overview"
+  })
+
+  useEffect(() => {
+    localStorage.setItem("sidebar-tab", activeTab)
+  }, [activeTab])
 
   const chatCount = chatMessages.length
+  const errorCount = agents.filter(a => a.status === "error").length
+  const walletAlert = agents.some(a => !a.wallet || (a.wallet.funded && parseFloat(a.wallet.balance) < 10))
 
   return (
     <div style={{
@@ -250,6 +288,7 @@ export function SidebarPanel({
             }}
           >
             {tab.label}
+            {/* Status badges */}
             {tab.id === "chat" && chatCount > 0 && (
               <span style={{
                 position: "absolute",
@@ -259,6 +298,37 @@ export function SidebarPanel({
                 height: 6,
                 borderRadius: "50%",
                 background: "#34d399",
+              }} />
+            )}
+            {tab.id === "overview" && errorCount > 0 && (
+              <span style={{
+                position: "absolute",
+                top: 3,
+                right: 2,
+                minWidth: 14,
+                height: 14,
+                borderRadius: 7,
+                background: "#f87171",
+                color: "#fff",
+                fontSize: 8,
+                fontFamily: "monospace",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "0 2px",
+              }}>
+                {errorCount}
+              </span>
+            )}
+            {tab.id === "wallet" && walletAlert && (
+              <span style={{
+                position: "absolute",
+                top: 4,
+                right: 4,
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                background: "#fbbf24",
               }} />
             )}
           </button>

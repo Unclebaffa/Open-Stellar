@@ -12,22 +12,30 @@ const BG_IMAGES: Record<string, string> = {
   research: "/bg-research.jpg",
 }
 
-// Each sprite config: path + optional crop region (fraction 0-1) to extract a single pose from sprite sheets
 interface SpriteConfig {
   path: string
-  // Crop region as fractions of image dimensions: [x, y, w, h]. If omitted, auto-crop is used.
   crop?: [number, number, number, number]
 }
 
 const SPRITE_CONFIGS: SpriteConfig[] = [
-  { path: "/sprites/robot-tv.gif" },                             // 0 - TV headed bot (single pose)
-  { path: "/sprites/robot-tank.gif" },                           // 1 - Tank treaded bot (single pose)
-  { path: "/sprites/robot-blue.gif", crop: [0.3, 0.5, 0.4, 0.5] },  // 2 - Blue bot: front-center pose (bottom middle)
-  { path: "/sprites/robot-gold.gif" },                           // 3 - Gold pixel bot (single pose)
-  { path: "/sprites/robot-runner.gif", crop: [0.5, 0, 0.5, 1] },    // 4 - Runner bot: right frame only
-  { path: "/sprites/robot-heavy.webp" },                         // 5 - Heavy dark bot (single pose)
-  { path: "/sprites/robot-green.gif" },                          // 6 - Green walking bot (single pose)
+  { path: "/sprites/robot-tv.gif" },
+  { path: "/sprites/robot-tank.gif" },
+  { path: "/sprites/robot-blue.gif", crop: [0.3, 0.5, 0.4, 0.5] },
+  { path: "/sprites/robot-gold.gif" },
+  { path: "/sprites/robot-runner.gif", crop: [0.5, 0, 0.5, 1] },
+  { path: "/sprites/robot-heavy.webp" },
+  { path: "/sprites/robot-green.gif" },
 ]
+
+export interface TxAnimation {
+  id: number
+  fromX: number
+  fromY: number
+  toX: number
+  toY: number
+  startedAt: number
+  duration: number
+}
 
 interface PixelCityProps {
   agents: MoltbotAgent[]
@@ -35,14 +43,17 @@ interface PixelCityProps {
   selectedAgentId: string | null
   onSelectAgent: (id: string | null) => void
   tick: number
+  txAnimations?: TxAnimation[]
 }
 
-export function PixelCity({ agents, districts, selectedAgentId, onSelectAgent, tick }: PixelCityProps) {
+export function PixelCity({ agents, districts, selectedAgentId, onSelectAgent, tick, txAnimations = [] }: PixelCityProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [images, setImages] = useState<Record<string, HTMLImageElement>>({})
   const [sprites, setSprites] = useState<HTMLImageElement[]>([])
   const spriteCrops = useRef<(([number, number, number, number]) | undefined)[]>([])
+  const [hoveredAgent, setHoveredAgent] = useState<MoltbotAgent | null>(null)
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null)
 
   // Preload all background images and robot sprites
   useEffect(() => {
@@ -109,18 +120,15 @@ export function PixelCity({ agents, districts, selectedAgentId, onSelectAgent, t
     const w = canvas.width / dpr
     const h = canvas.height / dpr
 
-    // Clear canvas (transparent -- the city GIF background shows through behind it)
     ctx.clearRect(0, 0, w, h)
 
     drawGrid(ctx, w, h)
     drawRoads(ctx, districts)
 
-    // Draw districts with background images
     for (const d of districts) {
       drawDistrict(ctx, d, tick, images[d.id])
     }
 
-    // Draw agents sorted by Y for depth
     const sorted = [...agents].sort((a, b) => a.pixelY - b.pixelY)
     for (const agent of sorted) {
       const spriteIdx = agent.spriteId % sprites.length
@@ -129,7 +137,41 @@ export function PixelCity({ agents, districts, selectedAgentId, onSelectAgent, t
       drawBot(ctx, agent, tick, agent.id === selectedAgentId, agentSprite, crop)
     }
 
-    // Title
+    // Draw tx animations
+    const now = Date.now()
+    for (const anim of txAnimations) {
+      const elapsed = now - anim.startedAt
+      const t = Math.min(1, elapsed / anim.duration)
+      if (t >= 1) continue
+
+      const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
+
+      ctx.save()
+      ctx.globalAlpha = Math.sin(t * Math.PI) * 0.85
+      ctx.strokeStyle = "#fbbf24"
+      ctx.lineWidth = 2
+      ctx.setLineDash([6, 4])
+      ctx.lineDashOffset = -elapsed * 0.08
+
+      const headX = anim.fromX + (anim.toX - anim.fromX) * eased
+      const headY = anim.fromY + (anim.toY - anim.fromY) * eased
+
+      ctx.beginPath()
+      ctx.moveTo(anim.fromX, anim.fromY)
+      ctx.lineTo(headX, headY)
+      ctx.stroke()
+
+      // Glowing dot at head
+      ctx.setLineDash([])
+      ctx.globalAlpha = Math.sin(t * Math.PI)
+      ctx.fillStyle = "#fbbf24"
+      ctx.beginPath()
+      ctx.arc(headX, headY, 4, 0, Math.PI * 2)
+      ctx.fill()
+
+      ctx.restore()
+    }
+
     ctx.font = "bold 14px monospace"
     ctx.fillStyle = "#22d3ee"
     ctx.textAlign = "left"
@@ -137,7 +179,19 @@ export function PixelCity({ agents, districts, selectedAgentId, onSelectAgent, t
     ctx.font = "10px monospace"
     ctx.fillStyle = "#64748b"
     ctx.fillText(`TICK ${tick}  |  ${agents.length} AGENTS DEPLOYED`, 40, 44)
-  }, [agents, districts, selectedAgentId, tick, images, sprites])
+  }, [agents, districts, selectedAgentId, tick, images, sprites, txAnimations])
+
+  const hitTestAgent = useCallback(
+    (mx: number, my: number): MoltbotAgent | null => {
+      for (const agent of agents) {
+        const dx = mx - (agent.pixelX + 8)
+        const dy = my - (agent.pixelY + 10)
+        if (Math.sqrt(dx * dx + dy * dy) < 16) return agent
+      }
+      return null
+    },
+    [agents]
+  )
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -146,20 +200,42 @@ export function PixelCity({ agents, districts, selectedAgentId, onSelectAgent, t
       const rect = canvas.getBoundingClientRect()
       const mx = e.clientX - rect.left
       const my = e.clientY - rect.top
-
-      let found: string | null = null
-      for (const agent of agents) {
-        const dx = mx - (agent.pixelX + 8)
-        const dy = my - (agent.pixelY + 10)
-        if (Math.sqrt(dx * dx + dy * dy) < 16) {
-          found = agent.id
-          break
-        }
-      }
-      onSelectAgent(found)
+      const found = hitTestAgent(mx, my)
+      onSelectAgent(found?.id ?? null)
     },
-    [agents, onSelectAgent]
+    [hitTestAgent, onSelectAgent]
   )
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const rect = canvas.getBoundingClientRect()
+      const mx = e.clientX - rect.left
+      const my = e.clientY - rect.top
+      const found = hitTestAgent(mx, my)
+      setHoveredAgent(found)
+      if (found) {
+        setTooltipPos({ x: mx + 12, y: my - 8 })
+        canvas.style.cursor = "pointer"
+      } else {
+        setTooltipPos(null)
+        canvas.style.cursor = "crosshair"
+      }
+    },
+    [hitTestAgent]
+  )
+
+  const handleMouseLeave = useCallback(() => {
+    setHoveredAgent(null)
+    setTooltipPos(null)
+    const canvas = canvasRef.current
+    if (canvas) canvas.style.cursor = "crosshair"
+  }, [])
+
+  const statusColors: Record<string, string> = {
+    active: "#34d399", working: "#fbbf24", idle: "#64748b", error: "#f87171", offline: "#1e293b",
+  }
 
   return (
     <div ref={containerRef} style={{ width: "100%", height: "100%", position: "relative", overflow: "hidden" }}>
@@ -183,6 +259,8 @@ export function PixelCity({ agents, districts, selectedAgentId, onSelectAgent, t
       <canvas
         ref={canvasRef}
         onClick={handleClick}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
         style={{
           cursor: "crosshair",
           display: "block",
@@ -191,6 +269,38 @@ export function PixelCity({ agents, districts, selectedAgentId, onSelectAgent, t
           zIndex: 1,
         }}
       />
+      {/* Agent hover tooltip */}
+      {hoveredAgent && tooltipPos && (
+        <div
+          style={{
+            position: "absolute",
+            left: tooltipPos.x,
+            top: tooltipPos.y,
+            zIndex: 10,
+            background: "#111827",
+            border: "1px solid #2a3a52",
+            borderRadius: 6,
+            padding: "6px 10px",
+            pointerEvents: "none",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: statusColors[hoveredAgent.status] ?? "#64748b" }} />
+            <span style={{ fontFamily: "monospace", fontSize: 11, fontWeight: 700, color: hoveredAgent.color }}>
+              {hoveredAgent.name}
+            </span>
+          </div>
+          <div style={{ fontFamily: "monospace", fontSize: 9, color: "#64748b", lineHeight: 1.5 }}>
+            <div>{hoveredAgent.status.toUpperCase()} · CPU {Math.round(hoveredAgent.cpu)}%</div>
+            {hoveredAgent.currentTask && (
+              <div style={{ color: "#94a3b8", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {hoveredAgent.currentTask}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
