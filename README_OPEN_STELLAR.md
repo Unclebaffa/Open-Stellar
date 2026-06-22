@@ -2,7 +2,7 @@
 
 > AI-powered Moltbot gateway running on Cloudflare Workers with **free** Groq LLM integration
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/leocagli/Open-Stellar)
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/bitcoindefi/Open-Stellar)
 
 ## ✨ Features
 
@@ -27,7 +27,7 @@
 ### 2. Clone and Setup
 
 ```bash
-git clone https://github.com/leocagli/Open-Stellar.git
+git clone https://github.com/bitcoindefi/Open-Stellar.git
 cd Open-Stellar
 npm install
 ```

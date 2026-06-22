@@ -12,7 +12,7 @@
 2. **Sube el código**:
    ```bash
    cd /workspaces/moltworker
-   git remote add stellar https://github.com/leocagli/Open-Stellar.git
+   git remote add stellar https://github.com/bitcoindefi/Open-Stellar.git
    git push -u stellar main
    ```
 

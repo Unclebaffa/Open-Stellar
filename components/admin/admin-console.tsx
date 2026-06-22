@@ -404,7 +404,7 @@ function PrivateDeployTab() {
           <p className="text-[10px] uppercase tracking-[0.32em] text-slate-500">Setup guide</p>
           <h3 className="mt-3 font-pixel text-lg uppercase text-slate-100">Quick start</h3>
           <div className="mt-5 space-y-4">
-            <DeployStep n={1} title="Fork" text="Fork leocagli/Open-Stellar on GitHub. The repo includes all ZK artifacts and Soroban contract bindings — no extra setup." />
+            <DeployStep n={1} title="Fork" text="Fork bitcoindefi/Open-Stellar on GitHub. The repo includes all ZK artifacts and Soroban contract bindings — no extra setup." />
             <DeployStep n={2} title="Configure" text="Add the environment variables below to your Vercel project settings. WalletConnect project ID is the only required external credential." />
             <DeployStep n={3} title="Deploy" text="Push to main — Vercel picks it up automatically. The vercel.json enforces --webpack mode for snarkjs compatibility." />
           </div>
@@ -422,7 +422,7 @@ function PrivateDeployTab() {
 
           <div className="mt-6 flex flex-col gap-2">
             <a
-              href="https://github.com/leocagli/Open-Stellar"
+              href="https://github.com/bitcoindefi/Open-Stellar"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-xs uppercase tracking-[0.2em] text-slate-300 transition hover:border-cyan-400/40 hover:text-cyan-200"
@@ -432,7 +432,7 @@ function PrivateDeployTab() {
               <ExternalLink className="h-3 w-3" />
             </a>
             <a
-              href="https://github.com/leocagli/open-stellar-passport"
+              href="https://github.com/bitcoindefi/open-stellar-passport"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-xs uppercase tracking-[0.2em] text-slate-300 transition hover:border-cyan-400/40 hover:text-cyan-200"

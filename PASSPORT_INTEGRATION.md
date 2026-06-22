@@ -1,6 +1,6 @@
 # Agent Passport (ZK) integration
 
-[open-stellar-passport](https://github.com/leocagli/open-stellar-passport) ported into Open Stellar as the
+[open-stellar-passport](https://github.com/bitcoindefi/open-stellar-passport) ported into Open Stellar as the
 zero-knowledge trust layer for agent payments. An agent mints a Groth16 passport that proves — without revealing the
 owner's identity or real balance — that it is backed by a verified human and is solvent for its spend cap. The x402
 settlement rail then releases a payment only when the agent holds a valid passport and the amount is within its proven,

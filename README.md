@@ -146,7 +146,7 @@ Obtener WalletConnect project ID en [cloud.walletconnect.com](https://cloud.wall
 ## Instalación y desarrollo local
 
 ```bash
-git clone https://github.com/leocagli/Open-Stellar.git
+git clone https://github.com/bitcoindefi/Open-Stellar.git
 cd Open-Stellar
 npm install
 ```
@@ -249,7 +249,7 @@ vercel.json              build config para Vercel
 
 ## Repositorios relacionados
 
-- [open-stellar-passport](https://github.com/leocagli/open-stellar-passport) — fuente original del sistema ZK passport (Vite standalone), portado a este repo en `lib/passport/`
+- [open-stellar-passport](https://github.com/bitcoindefi/open-stellar-passport) — fuente original del sistema ZK passport (Vite standalone), portado a este repo en `lib/passport/`
 
 ---
 

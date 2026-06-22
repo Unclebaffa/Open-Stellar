@@ -14,7 +14,7 @@ if (walletConnectProjectId) {
       metadata: {
         name: 'Open Stellar',
         description: 'Open Stellar multi-chain dApp',
-        url: process.env.NEXT_PUBLIC_APP_URL || 'https://github.com/leocagli/Open-Stellar',
+        url: process.env.NEXT_PUBLIC_APP_URL || 'https://github.com/bitcoindefi/Open-Stellar',
         icons: ['https://avatars.githubusercontent.com/u/37784886'],
       },
     })
