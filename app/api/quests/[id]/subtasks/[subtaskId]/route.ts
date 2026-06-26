@@ -14,6 +14,74 @@ function sanitizeDependsOn(value: unknown): string[] | undefined {
     .filter((dependency) => dependency.length > 0)
 }
 
+/**
+ * Detects if adding `dependsOn` to `targetId` would create a cycle.
+ * Returns the cycle path as an array of unique node IDs in order,
+ * rotated so the first element is the earliest node in the subtasks order.
+ * Returns null if no cycle exists.
+ */
+function detectCycle(
+  subtasks: { id: string; dependsOn?: string[] }[],
+  targetId: string,
+  newDependsOn: string[]
+): string[] | null {
+  // Build adjacency map from all subtasks
+  const graph = new Map<string, string[]>()
+  for (const st of subtasks) {
+    graph.set(st.id, st.dependsOn ? [...st.dependsOn] : [])
+  }
+
+  // Apply the proposed update
+  graph.set(targetId, [...newDependsOn])
+
+  // DFS with recursion stack to detect back edge
+  const visited = new Set<string>()
+  const recStack = new Set<string>()
+  const path: string[] = []
+
+  function dfs(node: string): string[] | null {
+    visited.add(node)
+    recStack.add(node)
+    path.push(node)
+
+    const neighbors = graph.get(node) ?? []
+    for (const neighbor of neighbors) {
+      if (!visited.has(neighbor)) {
+        const cycle = dfs(neighbor)
+        if (cycle) return cycle
+      } else if (recStack.has(neighbor)) {
+        // Found cycle — extract the loop from path
+        const cycleStart = path.indexOf(neighbor)
+        const cyclePath = path.slice(cycleStart)
+
+        // Rotate cycle so the first element is the one that appears
+        // earliest in the subtasks array (for stable test output)
+        const subtaskOrder = new Map(subtasks.map((st, i) => [st.id, i]))
+        let earliestIndex = 0
+        let earliestOrder = Infinity
+        for (let i = 0; i < cyclePath.length; i++) {
+          const order = subtaskOrder.get(cyclePath[i]) ?? Infinity
+          if (order < earliestOrder) {
+            earliestOrder = order
+            earliestIndex = i
+          }
+        }
+        const rotated = [
+          ...cyclePath.slice(earliestIndex),
+          ...cyclePath.slice(0, earliestIndex),
+        ]
+        return rotated
+      }
+    }
+
+    path.pop()
+    recStack.delete(node)
+    return null
+  }
+
+  return dfs(targetId)
+}
+
 export async function PATCH(req: Request, context: Context) {
   const { id, subtaskId } = await context.params
   const questId = decodeURIComponent(id)
@@ -58,6 +126,18 @@ export async function PATCH(req: Request, context: Context) {
     if (body.dependsOn !== undefined) {
       updates.dependsOn = sanitizeDependsOn(body.dependsOn)
     }
+
+    // --- CYCLE DETECTION ---
+    if (updates.dependsOn !== undefined) {
+      const cycle = detectCycle(subtasks, decodedSubTaskId, updates.dependsOn)
+      if (cycle) {
+        return NextResponse.json(
+          { ok: false, error: "circular_dependency", cycle },
+          { status: 422 }
+        )
+      }
+    }
+    // -----------------------
 
     if (updates.status === "done") {
       const dependsOn = updates.dependsOn ?? subtask.dependsOn ?? []
