@@ -118,7 +118,7 @@ export async function POST(req: Request, context: RouteContext) {
 
     if (!result.ok || !result.receipt) {
       return await api.json(
-        { ok: false, error: result.error || 'Payment verification failed' },
+        { ok: false, error: 'Payment verification failed' },
         { status: 402 },
         {
           event: 'skill.invoke.payment_rejected',
